@@ -1,6 +1,7 @@
 {
   "name": "pdf-labeler",
   "version": "0.0.0",
+  "license": "MIT",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
@@ -8,7 +9,6 @@
     "pages": "vue-tsc --noEmit && vite build --outDir docs"
   },
   "dependencies": {
-    "@mdi/font": "7.2.96",
     "pdf-lib": "^1.17.1",
     "roboto-fontface": "*",
     "vue": "^3.2.47",
@@ -16,6 +16,7 @@
     "webfontloader": "^1.0.0"
   },
   "devDependencies": {
+    "@mdi/js": "^7.2.96",
     "@types/node": "^18.11.9",
     "@types/webfontloader": "^1.6.35",
     "@vitejs/plugin-vue": "^3.2.0",
