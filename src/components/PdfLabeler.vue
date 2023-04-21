@@ -30,6 +30,10 @@
               label="Top Offset"
               :rules="[validateNumber]"
             />
+            <v-radio-group label="Output Format:" v-model="state.outputFormat">
+              <v-radio label="Single PDF" value="single"/>
+              <v-radio label="One PDF per Name" value="multiple"/>
+            </v-radio-group>
             <v-btn
               color="primary"
               @click="generatePdfs"
@@ -51,11 +55,13 @@ const state = reactive<{
   textSize: string,
   leftOffset: string,
   topOffset: string,
+  outputFormat: string,
 }>({
   nameInput: '',
   textSize: "20",
   leftOffset: "30",
   topOffset: "30",
+  outputFormat: "single",
 })
 
 const names = computed(() => {
@@ -94,9 +100,7 @@ const generatePdfs = async () => {
       console.error('Error loading PDF')
       return
     }
-    const doc = await PDFDocument.load(reader.result)
-
-    const labelPdf = async (name: string) => {
+    const labelPdf = async (doc: PDFDocument, name: string) => {
       const pages = doc.getPages()
       pages.forEach(page => {
         page.drawText(name, {
@@ -105,12 +109,26 @@ const generatePdfs = async () => {
           size: parseInt(state.textSize),
         })
       })
-      return await doc.save()
     }
 
-    for (const name of names.value) {
-      const output = await labelPdf(name)
-      saveByteArray(name.toLowerCase().replace(/\s+/g, '') + '-' + filename, output)
+    if (state.outputFormat === 'multiple') {
+      for (const name of names.value) {
+        const doc = await PDFDocument.load(reader.result)
+        await labelPdf(doc, name)
+        const output = await doc.save()
+        saveByteArray(name.toLowerCase().replace(/\s+/g, '') + '-' + filename, output)
+      }
+    }
+    else {
+      const newDoc = await PDFDocument.create()
+      for (const name of names.value) {
+        const doc = await PDFDocument.load(reader.result)
+        await labelPdf(doc, name)
+        const newPages = await newDoc.copyPages(doc, doc.getPageIndices())
+        newPages.forEach(page => newDoc.addPage(page))
+      }
+      const output = await newDoc.save()
+      saveByteArray('New-' + filename, output)
     }
   }
 
