@@ -30,6 +30,7 @@
               label="Top Offset"
               :rules="[validateNumber]"
             />
+            <v-select label="Font" v-model="state.selectedFont" :items="state.fonts"/>
             <v-radio-group label="Output Format:" v-model="state.outputFormat">
               <v-radio label="Single PDF" value="single"/>
               <v-radio label="One PDF per Name" value="multiple"/>
@@ -46,8 +47,10 @@
 </template>
 
 <script setup lang="ts">
-import {computed, reactive} from "vue";
-import {PDFDocument} from 'pdf-lib';
+import {computed, onMounted, reactive} from "vue";
+import {PDFDocument, PDFFont, StandardFonts} from 'pdf-lib';
+import traceFontRef from '@/assets/Trace-lxy0.ttf'
+import fontkit from '@pdf-lib/fontkit'
 
 const state = reactive<{
   pdfFiles?: File[],
@@ -56,12 +59,29 @@ const state = reactive<{
   leftOffset: string,
   topOffset: string,
   outputFormat: string,
+  traceFont?: ArrayBuffer,
+  fonts: string[],
+  selectedFont: string,
 }>({
   nameInput: '',
   textSize: "20",
   leftOffset: "30",
   topOffset: "30",
   outputFormat: "single",
+  fonts: ['Helvetica', 'Times Roman'],
+  selectedFont: 'Helvetica',
+})
+
+onMounted(async () => {
+  try {
+    state.traceFont = await fetch(traceFontRef).then(res => res.arrayBuffer())
+    state.fonts.push('Trace')
+    state.selectedFont = 'Trace'
+  }
+  catch (e) {
+    console.error('Error loading Trace font:')
+    console.error(e)
+  }
 })
 
 const names = computed(() => {
@@ -87,26 +107,48 @@ const saveByteArray = (filename: string, bytes: Uint8Array) => {
   link.click()
 }
 
+const embedFont = async (doc: PDFDocument, fontName: string) => {
+  let font: PDFFont|undefined
+  if (fontName === 'Trace' && state.traceFont) {
+    font = await doc.embedFont(state.traceFont)
+  }
+  else if (fontName === 'Helvetica') {
+    font = await doc.embedFont(StandardFonts.Helvetica)
+  }
+  else if (fontName === 'Times Roman') {
+    font = await doc.embedFont(StandardFonts.TimesRoman)
+  }
+  else {
+    throw 'Error loading font'
+  }
+  return font
+}
+
 const generatePdfs = async () => {
   if (!state.pdfFiles || state.pdfFiles.length === 0 || names.value.length === 0) {
     return
   }
 
   const reader = new FileReader()
-  var filename = ''
+  let filename = ''
 
   reader.onload = async () => {
     if (!reader.result) {
       console.error('Error loading PDF')
       return
     }
-    const labelPdf = async (doc: PDFDocument, name: string) => {
+    if (!state.traceFont) {
+      console.error('Error loading Trace font')
+      return
+    }
+    const labelPdf = async (doc: PDFDocument, name: string, font?: PDFFont) => {
       const pages = doc.getPages()
       pages.forEach(page => {
         page.drawText(name, {
           x: parseInt(state.leftOffset),
           y: page.getHeight() - parseInt(state.topOffset),
           size: parseInt(state.textSize),
+          font,
         })
       })
     }
@@ -114,16 +156,22 @@ const generatePdfs = async () => {
     if (state.outputFormat === 'multiple') {
       for (const name of names.value) {
         const doc = await PDFDocument.load(reader.result)
-        await labelPdf(doc, name)
+        doc.registerFontkit(fontkit)
+        const customFont = await embedFont(doc, state.selectedFont)
+        await labelPdf(doc, name, customFont)
         const output = await doc.save()
         saveByteArray(name.toLowerCase().replace(/\s+/g, '') + '-' + filename, output)
       }
     }
     else {
       const newDoc = await PDFDocument.create()
+      newDoc.registerFontkit(fontkit)
+      await embedFont(newDoc, state.selectedFont)
       for (const name of names.value) {
         const doc = await PDFDocument.load(reader.result)
-        await labelPdf(doc, name)
+        doc.registerFontkit(fontkit)
+        const customFont = await embedFont(doc, state.selectedFont)
+        await labelPdf(doc, name, customFont)
         const newPages = await newDoc.copyPages(doc, doc.getPageIndices())
         newPages.forEach(page => newDoc.addPage(page))
       }
